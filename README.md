@@ -201,7 +201,7 @@ bash build.sh                       # compila o forge com ghc, sem cabal
 ./build/forge version
 
 # precisa do P01 para os testes de ponta a ponta
-bash tests/run_tests.sh             # 25 verificações
+bash tests/run_tests.sh             # 39 verificações
 bash tests/run_tests.sh build/forge ../p01-metal-vm/build-switch/fvm
 ```
 
