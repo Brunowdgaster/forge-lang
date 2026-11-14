@@ -1,0 +1,6 @@
+-- Aplicacao parcial BEM TIPADA: inc : Int -> Int.
+-- O verificador aceita; o backend nao baixa, porque 'soma' tem aridade 2 e
+-- foi aplicada a 1 argumento -- isso exige uma closure. Ver README, Fase 2.
+let soma a b = a + b
+let inc = soma 1
+let main = print (inc 41)

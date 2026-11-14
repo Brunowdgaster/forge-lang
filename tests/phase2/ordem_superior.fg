@@ -1,0 +1,6 @@
+-- Bem tipado: aplica : (Int -> Int) -> Int -> Int.
+-- O verificador aceita; o gerador de codigo nao, porque o bytecode do P01
+-- so tem CALL para endereco fixo. Ver README, Fase 2.
+let aplica f x = f x
+let dobra x = x * 2
+let main = print (aplica dobra 21)

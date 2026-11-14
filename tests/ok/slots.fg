@@ -1,0 +1,7 @@
+-- exercita alocacao de slots: parametros + lets aninhados
+let f a b =
+  let x = a + b in
+  let y = x * 2 in
+  x + y
+
+let main = print (f 3 4)

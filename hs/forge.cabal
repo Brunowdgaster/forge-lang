@@ -1,0 +1,16 @@
+cabal-version:      2.4
+name:               forge
+version:            0.1.0
+synopsis:           Compilador da linguagem forge para o bytecode da Forge VM
+license:            MIT
+build-type:         Simple
+
+-- Opcional: build.sh usa o ghc direto, sem resolucao de dependencias.
+-- Todas as bibliotecas abaixo acompanham o GHC.
+executable forge
+    main-is:          Main.hs
+    hs-source-dirs:   app, src
+    other-modules:    Ast, Lexer, Parser, Types, Infer, Bytecode, Codegen
+    build-depends:    base >=4.17 && <5, containers >=0.6, mtl >=2.2
+    default-language: Haskell2010
+    ghc-options:      -O2 -Wall

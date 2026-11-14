@@ -1,0 +1,8 @@
+build/
+dist-newstyle/
+*.hi
+*.o
+*.fbc
+*.fasm
+.vscode/
+.idea/

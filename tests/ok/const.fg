@@ -1,0 +1,7 @@
+-- declaracao de topo sem parametros: vira label com RET, referencia vira CALL 0
+let limite = 10 * 10
+
+let rec soma n =
+  if n == 0 then 0 else n + soma (n - 1)
+
+let main = print (soma limite)

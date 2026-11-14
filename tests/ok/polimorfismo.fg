@@ -1,0 +1,7 @@
+-- id e usada em DOIS tipos no mesmo programa: e isso que let-polimorfismo da.
+-- forge types mostra: id : forall t. t -> t
+let id x = x
+
+let main =
+  print (id 42);
+  if id true then print 1 else print 0

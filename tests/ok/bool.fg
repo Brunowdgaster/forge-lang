@@ -1,0 +1,5 @@
+let main =
+  (if 3 * 2 == 6 then print 1 else print 0);
+  (if 2 != 2 then print 1 else print 0);
+  (if 5 >= 5 then print 1 else print 0);
+  (if true == false then print 1 else print 0)

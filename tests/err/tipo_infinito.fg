@@ -1,0 +1,3 @@
+-- x aplicado a si mesmo: o teste de ocorrencia tem de pegar
+let bad x = x x
+let main = print 0

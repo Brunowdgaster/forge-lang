@@ -1,0 +1,51 @@
+name: ci
+
+# Este CI exercita a dependencia REAL entre os dois projetos: clona o
+# metal-vm (P01), compila a VM dele e roda nela os programas compilados pelo
+# forge. Se o P01 mudar o formato do bytecode, este CI quebra -- que e
+# exatamente o que se quer de um teste de integracao. Copiar a VM para dentro
+# deste repositorio esconderia o acoplamento que o teste existe para vigiar.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: instalar GHC
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ghc
+          ghc --version
+
+      - name: compilar o forge
+        run: bash build.sh
+
+      # O P01 e um repositorio separado: a VM vem de la, nao daqui.
+      - name: clonar e compilar a VM do P01
+        run: |
+          git clone --depth 1 https://github.com/Brunowdgaster/metal-vm /tmp/p01
+          cmake -S /tmp/p01 -B /tmp/p01/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/p01/build -j
+          /tmp/p01/build/fvm version
+
+      - name: suite completa (25 verificacoes)
+        run: bash tests/run_tests.sh ./build/forge /tmp/p01/build/fvm
+
+      # A mesma saida tem de rodar na VM em Rust do P01 tambem: e a prova de
+      # que o forge gera bytecode, nao "bytecode que o C aceita".
+      - name: rodar tambem na VM em Rust do P01
+        run: |
+          cargo build --release --manifest-path /tmp/p01/rust/Cargo.toml
+          bash tests/run_tests.sh ./build/forge /tmp/p01/rust/target/release/fvm
+
+      - name: tipos inferidos dos exemplos
+        run: |
+          echo "--- primeira ordem ---"
+          ./build/forge types tests/ok/polimorfismo.fg
+          echo "--- ordem superior: tipa, mas o backend ainda nao baixa ---"
+          ./build/forge types tests/phase2/ordem_superior.fg

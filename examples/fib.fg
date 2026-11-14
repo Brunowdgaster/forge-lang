@@ -1,0 +1,7 @@
+-- Fibonacci recursivo. Nenhum tipo e anotado: tudo abaixo e inferido.
+let rec fib n =
+  if n < 2 then n
+  else fib (n - 1) + fib (n - 2)
+
+let main =
+  print (fib 20)

@@ -1,0 +1,5 @@
+-- o rhs do let interno ve o x externo, nao a si mesmo
+let main =
+  let x = 1 in
+  let x = x + 10 in
+  print x

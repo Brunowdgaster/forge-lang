@@ -1,0 +1,9 @@
+-- par/impar por recursao, uma chamando a definida antes dela
+let rec impar n =
+  if n == 0 then false
+  else if n == 1 then true
+  else impar (n - 2)
+
+let main =
+  (if impar 7 then print 1 else print 0);
+  (if impar 8 then print 1 else print 0)
