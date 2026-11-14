@@ -33,7 +33,7 @@ jobs:
           cmake --build /tmp/p01/build -j
           /tmp/p01/build/fvm version
 
-      - name: suite completa (25 verificacoes)
+      - name: suite completa (39 verificacoes)
         run: bash tests/run_tests.sh ./build/forge /tmp/p01/build/fvm
 
       # A mesma saida tem de rodar na VM em Rust do P01 tambem: e a prova de
@@ -45,7 +45,12 @@ jobs:
 
       - name: tipos inferidos dos exemplos
         run: |
-          echo "--- primeira ordem ---"
+          echo "--- let-polimorfismo ---"
           ./build/forge types tests/ok/polimorfismo.fg
-          echo "--- ordem superior: tipa, mas o backend ainda nao baixa ---"
-          ./build/forge types tests/phase2/ordem_superior.fg
+          echo "--- ordem superior (compila desde a Fase 2) ---"
+          ./build/forge types tests/ok/composicao.fg
+          echo "--- a limitacao que resta: tipa, mas o backend recusa ---"
+          ./build/forge types tests/phase2/let_rec_local.fg
+
+      - name: codigo gerado para uma closure com captura
+        run: ./build/forge emit tests/ok/captura.fg
