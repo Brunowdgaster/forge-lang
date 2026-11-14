@@ -1,0 +1,4 @@
+-- 'print' passado como valor: PRINT e instrucao, nao rotulo, entao o
+-- compilador gera um invólucro $print para poder embrulha-lo numa closure.
+let aplica f x = f x
+let main = aplica print 42

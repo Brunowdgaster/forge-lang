@@ -43,6 +43,17 @@ data Instr
   | IRet
   | IPrint
   | INewarr | IAget | IAset | IAlen | IGc
+  -- | Chamada indireta via closure (opcode 31 do P01, Fase 2).
+  --
+  -- Pilha na entrada: @[... closure arg1 .. argN]@. A closure fica como slot 0
+  -- do frame, os argumentos em 1..N, e nao e desempilhada.
+  | ICalli Int
+  -- | @PUSH \<rotulo\>@: empurra o ENDERECO do rotulo como inteiro de 64 bits.
+  --
+  -- Nao e um opcode novo -- e OP_PUSH com o endereco resolvido pelo montador.
+  -- E o que permite construir uma closure (um array cujo item 0 e o endereco
+  -- do codigo) sem precisar de instrucao nenhuma alem de CALLI.
+  | IPushAddr Label
   | ILabel Label
   deriving (Show, Eq)
 
@@ -79,6 +90,8 @@ opcode i = case i of
   IAset      -> 28
   IAlen      -> 29
   IGc        -> 30
+  ICalli _   -> 31
+  IPushAddr _ -> 1          -- e um OP_PUSH
   ILabel _   -> error "ILabel nao tem opcode"
 
 -- | Tamanho em bytes. Pseudo-instrução ocupa zero.
@@ -86,6 +99,8 @@ instrSize :: Instr -> Int
 instrSize i = case i of
   ILabel _   -> 0
   IPush _    -> 1 + 8
+  IPushAddr _ -> 1 + 8
+  ICalli _   -> 1 + 1
   IJmp _     -> 1 + 4
   IJz _      -> 1 + 4
   IJnz _     -> 1 + 4
@@ -135,6 +150,10 @@ assemble instrs entryLabel = do
     emit i = case i of
       ILabel _    -> Right []
       IPush v     -> Right (opcode i : le64 v)
+      IPushAddr l -> (\a -> opcode i : le64 (fromIntegral a)) <$> resolve l
+      ICalli n
+        | n < 0 || n > 255 -> Left $ "CALLI com nargs fora de 0..255: " ++ show n
+        | otherwise -> Right [opcode i, fromIntegral n]
       ILoad s     -> Right (opcode i : le32 s)
       IStore s    -> Right (opcode i : le32 s)
       IReserve s  -> Right (opcode i : le32 s)
@@ -159,6 +178,10 @@ toFasm instrs entryLabel =
     line i = case i of
       ILabel l    -> l ++ ":"
       IPush v     -> "  PUSH " ++ show v
+      -- o montador do P01 aceita rotulo em PUSH desde a Fase 2, entao o .fasm
+      -- gerado continua legivel e continua montavel por ele
+      IPushAddr l -> "  PUSH " ++ l
+      ICalli n    -> "  CALLI " ++ show n
       ILoad s     -> "  LOAD " ++ show s
       IStore s    -> "  STORE " ++ show s
       IReserve s  -> "  RESERVE " ++ show s

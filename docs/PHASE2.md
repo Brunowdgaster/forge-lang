@@ -1,4 +1,78 @@
-# Fase 2: closures, e a instrução que falta na VM
+# Fase 2: closures — **concluída**
+
+> **Status: implementada e verificada.** Os três programas que viviam em
+> `tests/phase2/` passaram para `tests/ok/`, que era o critério de pronto
+> declarado neste documento. A suíte foi de 25 para 39 verificações.
+>
+> O que mudou em relação ao desenho original está em
+> [Correções ao desenho](#correções-ao-desenho) — três coisas que o plano
+> previa diferente e o código descobriu.
+
+## O que ficou pronto
+
+| | |
+|---|---|
+| Instruções novas na VM | **1** (`CALLI nargs`), nas duas implementações |
+| Opcodes de apoio | nenhum — `PUSH` passou a aceitar rótulo |
+| Linhas somadas nas duas VMs | ~45, mais ~10 no montador de cada |
+| Conversão de closures no compilador | ~120 linhas em `Codegen.hs` |
+| Testes do P01 | 7 → 9 casos; compatibilidade cruzada 42 → 54 |
+| Testes do P02 | 25 → 39 verificações |
+
+O que o forge compila agora e não compilava:
+
+```forge
+let aplica f x = f x                    -- ordem superior
+let compose f g = \x -> f (g x)         -- lambda capturando duas funcoes
+let soma_com a = \x -> x + a            -- captura de variavel livre
+let inc = soma 1                        -- aplicacao parcial
+let p = soma3 1 in let q = p 2 in q 39  -- cadeia de aplicacao parcial
+let main = aplica print 42              -- builtin como valor
+```
+
+E o coletor trata closure como qualquer objeto: num teste que aloca 5.000
+delas, **2 coletas, 320.000 bytes reciclados, e a closure ainda alcançável
+sobreviveu**.
+
+## Correções ao desenho
+
+O plano acertou o tamanho da mudança e errou três detalhes. Todos apareceram
+escrevendo o código, e o documento foi corrigido em vez de reescrito, para que
+a diferença fique visível.
+
+### 1. A closure não é desempilhada
+
+O plano dizia: *"desempilha a closure; lê `arr[0]`; empilha um frame com
+`base = sp - nargs`"*. Isso deixaria a closure **fora** do frame, e as capturas
+inacessíveis.
+
+O que foi implementado: a closure fica **abaixo** dos argumentos e permanece
+como **slot 0** do frame (`base = sp - nargs - 1`). Assim `LOAD 0` é a closure
+e `LOAD 1..N` são os argumentos — sem registrador de ambiente e sem instrução
+de acesso a captura.
+
+### 2. Toda função que vira valor é unária
+
+O plano tratava aplicação parcial como um caso à parte. Na prática, currificar
+tudo no caminho genérico — aplicar **um argumento por vez** com `CALLI 1` —
+transforma ordem superior, aplicação parcial e sobre-aplicação **no mesmo
+mecanismo** em vez de três. Uma função de topo de aridade `n` usada como valor
+ganha uma cadeia `f$1 .. f$n` que acumula argumentos até poder emitir o `CALL`
+direto.
+
+Chamada direta a função de topo com aridade exata continua emitindo
+`CALL rotulo nargs`: closures custam alocação, e o caminho comum não paga.
+
+### 3. Um builtin a mais, não previsto
+
+Provar que o coletor recicla closures exigia forçar uma coleta de dentro da
+linguagem. Entrou um builtin `gc : Int -> Int`, que emite a instrução `GC` e
+devolve seu argumento. Sem ele, o teste de coleta precisaria ser escrito em
+bytecode à mão — ou seja, não testaria o compilador.
+
+---
+
+# Desenho original (mantido para referência)
 
 Este documento existe para que a limitação atual seja um **projeto de
 engenharia com desenho pronto**, e não uma desculpa.
@@ -116,15 +190,16 @@ antiga falha com "opcode invalido" — erro detectado e reportado, não corrupç
 silenciosa. A suíte de compatibilidade cruzada do P01 (42 verificações) passa a
 cobrir a instrução nova automaticamente, nas duas implementações.
 
-## Ordem de execução
+## Ordem de execução (cumprida nesta ordem)
 
-1. `OP_CALLI` em C, com teste e caso `.fasm` escrito à mão — primeiro na VM,
-   para que o compilador tenha um alvo que já funciona.
-2. `OP_CALLI` em Rust, verificando que a compatibilidade cruzada segue em 42/42.
-3. Análise de variáveis livres no forge, com testes de unidade sobre a AST.
-4. Lambda lifting e emissão, liberando os três casos hoje em `tests/phase2/`,
-   que passam a ser testes de `tests/ok/`.
+1. ✅ `OP_CALLI` em C, com dois casos `.fasm` escritos à mão — primeiro na VM,
+   para que o compilador tivesse um alvo que já funcionava.
+2. ✅ `OP_CALLI` em Rust; a compatibilidade cruzada passou de 42 para 54
+   verificações, todas verdes.
+3. ✅ Análise de variáveis livres no forge (`Codegen.freeVars`).
+4. ✅ Lambda lifting e emissão. Os três casos de `tests/phase2/` mudaram de
+   pasta.
 
-O critério de pronto: os arquivos de `tests/phase2/` **mudam de pasta**. É um
-critério verificável e não negociável — não há como declarar a fase concluída
-sem que os três programas rodem.
+O critério de pronto era: os arquivos de `tests/phase2/` **mudam de pasta**.
+Mudaram. A pasta não ficou vazia — recebeu a limitação que resta, `let rec`
+local, que precisa de uma closure referenciando a si mesma.

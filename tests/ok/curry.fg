@@ -1,0 +1,9 @@
+-- Cadeia de aplicacao parcial sobre uma funcao de aridade 3: exercita os
+-- invólucros soma3$1, soma3$2 e soma3$3 acumulando um argumento por vez.
+let soma3 a b c = a + b + c
+
+let main =
+  print (soma3 1 2 39);
+  let p = soma3 1 in
+  let q = p 2 in
+  print (q 39)

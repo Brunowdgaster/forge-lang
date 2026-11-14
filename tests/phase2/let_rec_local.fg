@@ -1,0 +1,7 @@
+-- Recursao LOCAL exige uma closure que referencia a si mesma: alocar, guardar
+-- no slot e so entao gravar o proprio endereco num campo dela. O coletor do
+-- P01 lida com o ciclo sem nada extra, entao e um incremento pequeno -- mas e
+-- um incremento. 'let rec' de topo funciona.
+let main =
+  let rec go n = if n == 0 then 0 else n + go (n - 1) in
+  print (go 10)

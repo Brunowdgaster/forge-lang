@@ -1,0 +1,16 @@
+-- Prova que closure e um objeto comum do heap: o coletor do P01 recicla as
+-- descartadas e preserva as alcancaveis, sem nenhum tratamento especial.
+--
+-- 'queima' aloca 5 closures por nivel e descarta todas (o ';' joga fora o
+-- valor), gerando lixo suficiente para passar do limiar de coleta.
+let soma_com a = \x -> x + a
+
+let rec queima n =
+  if n == 0 then 0
+  else (soma_com n; soma_com n; soma_com n; soma_com n; soma_com n; queima (n - 1))
+
+let main =
+  let f = soma_com 10 in
+  (queima 1000;
+   gc 0;
+   print (f 32))

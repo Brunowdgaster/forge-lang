@@ -1,0 +1,8 @@
+-- Composicao: a lambda captura DUAS funcoes e as chama indiretamente.
+let compose f g = \x -> f (g x)
+let dobra x = x * 2
+let mais1 x = x + 1
+
+let main =
+  let h = compose dobra mais1 in
+  print (h 20)

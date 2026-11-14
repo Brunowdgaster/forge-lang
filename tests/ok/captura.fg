@@ -1,0 +1,7 @@
+-- A lambda captura 'a', que e parametro da funcao de fora.
+-- A closure resultante guarda o valor capturado no proprio array.
+let soma_com a = \x -> x + a
+
+let main =
+  let f = soma_com 10 in
+  print (f 32)

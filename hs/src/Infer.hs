@@ -51,7 +51,11 @@ errI = lift . Left
 -- @print a; print b@ seja tipável sem precisar de um tipo unitário.
 builtins :: TypeEnv
 builtins = M.fromList
-  [ ("print", Scheme [] (TFun TInt TInt)) ]
+  [ ("print", Scheme [] (TFun TInt TInt))
+  -- 'gc n' forca uma coleta e devolve n. Existe para que o coletor do P01
+  -- seja testavel de dentro da linguagem: sem isso, provar que uma closure
+  -- alcancavel sobrevive a uma coleta exigiria escrever bytecode a mao.
+  , ("gc",    Scheme [] (TFun TInt TInt)) ]
 
 -- ------------------------------------------------------------------ expressão
 

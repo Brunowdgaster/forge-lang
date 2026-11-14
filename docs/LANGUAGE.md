@@ -91,9 +91,16 @@ comportamento indefinido.
 | nome | tipo | o que faz |
 |---|---|---|
 | `print` | `Int -> Int` | imprime o inteiro e **devolve** o valor |
+| `gc` | `Int -> Int` | força uma coleta de lixo e devolve o valor |
 
-`print` devolver o argumento é deliberado: permite `print a; print b` sem a
-linguagem precisar de um tipo unitário, e mantém toda expressão com valor.
+Os dois devolverem o argumento é deliberado: permite `print a; print b` sem a
+linguagem precisar de um tipo unitário, e mantém toda expressão com valor — o
+que por sua vez mantém a invariante do gerador de código (toda expressão deixa
+exatamente um valor na pilha) sem nenhum caso especial.
+
+`gc` existe para que o coletor do P01 seja testável de dentro da linguagem.
+Sem ele, provar que uma closure alcançável sobrevive a uma coleta exigiria
+escrever bytecode à mão — ou seja, não testaria o compilador.
 
 ## O ponto de entrada
 
@@ -122,20 +129,64 @@ forge: 104 bytes -> fib.fbc
 $ fvm exec fib.fbc        # a VM do projeto P01
 6765
 ```
+## Ordem superior e closures
 
-## O que a linguagem aceita e o compilador ainda não baixa
-
-Funções de ordem superior **tipam** e não **compilam**:
+Funções são valores de primeira classe. Tudo abaixo compila e roda na VM do
+P01, desde a Fase 2:
 
 ```forge
+-- funcao recebendo funcao
 let aplica f x = f x
--- aplica : forall t1 t2. (t1 -> t2) -> t1 -> t2    <- inferido corretamente
+
+-- lambda capturando variavel livre
+let soma_com a = \x -> x + a
+
+-- composicao: a lambda captura duas funcoes
+let compose f g = \x -> f (g x)
+
+-- aplicacao parcial, encadeada
+let soma3 a b c = a + b + c
+let main =
+  let p = soma3 1 in
+  let q = p 2 in
+  print (q 39)                -- 42
 ```
 
-`forge check` aceita. `forge build` recusa, porque o bytecode do P01 só tem
-chamada para endereço fixo. O desenho da instrução que falta está em
-[PHASE2.md](PHASE2.md).
+Builtins também são valores: `aplica print 42` funciona, porque o compilador
+gera um invólucro para `print` quando ele aparece sem ser aplicado.
 
-Essa separação é verificada por testes: `tests/phase2/` exige que o
-verificador aceite **e** que o backend recuse. Se um dia o verificador passar a
-recusar, a suíte acusa.
+Como isso é implementado — closure como array `[endereço, capturados...]`,
+chamada indireta com `CALLI`, currificação no caminho genérico e chamada
+direta preservada quando a aridade é exata — está em [PHASE2.md](PHASE2.md).
+
+## A limitação que resta: `let rec` local
+
+```forge
+let main =
+  let rec go n = if n == 0 then 0 else n + go (n - 1) in
+  print (go 10)
+```
+
+`forge check` **aceita** — é bem tipado. `forge build` **recusa**: recursão
+local precisa de uma closure que referencia a si mesma, o que exige alocar,
+guardar no slot e só então gravar o próprio endereço num campo dela. O coletor
+do P01 lida com o ciclo resultante sem nada extra, então é um incremento
+pequeno — mas é um incremento.
+
+`let rec` de **topo** funciona e resolve o caso na prática:
+
+```forge
+let rec go n = if n == 0 then 0 else n + go (n - 1)
+let main = print (go 10)      -- 55
+```
+
+Essa separação é verificada por teste: `tests/phase2/let_rec_local.fg` exige
+que o verificador aceite **e** que o backend recuse. Se um dia o verificador
+passar a recusar, a suíte acusa.
+
+## Sem chamada de cauda
+
+A VM do P01 tem 4.096 frames e o forge não faz otimização de chamada de cauda,
+então uma função recursiva de topo consome um frame por nível. Recursão de
+5.000 níveis estoura a pilha de chamadas — com **erro reportado pela VM**, não
+corrupção silenciosa.

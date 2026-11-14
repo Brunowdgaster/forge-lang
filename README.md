@@ -30,12 +30,13 @@ $ fvm-rust exec fib.fbc                 # a VM em Rust do P01
 6765
 ```
 
-> **Status:** o front-end está **completo** — inferência total, incluindo tipos
-> polimórficos e de ordem superior. O back-end baixa a linguagem de **primeira
-> ordem**; closures exigem uma instrução nova na VM, com desenho pronto em
-> [docs/PHASE2.md](docs/PHASE2.md). As 15 linguagens previstas no plano do P02
-> (OCaml, F#, Lisps, Prolog, Lean, Coq, Agda, Idris, Isabelle, TLA+, WAT) ainda
-> não começaram — ver [Estado atual](#estado-atual).
+> **Status:** front-end **completo** (inferência total) e back-end **completo
+> para ordem superior** — a Fase 2 foi implementada: closures, captura de
+> variável livre, composição e aplicação parcial compilam e rodam. Custou
+> **uma** instrução nova na VM do P01. Falta apenas `let rec` local.
+> As outras 14 linguagens previstas no plano do P02 (OCaml, F#, Lisps, Prolog,
+> Lean, Coq, Agda, Idris, Isabelle, TLA+, WAT) ainda não começaram — ver
+> [Estado atual](#estado-atual).
 
 ## Objetivo do projeto
 
@@ -55,14 +56,94 @@ e ela se sustentou, com uma limitação identificada e dimensionada.
 
 ## Resultado
 
-**25 verificações, todas passando**, em quatro categorias:
+**39 verificações, todas passando** nas três configurações de VM do P01
+(`switch`, computed goto e Rust), em quatro categorias:
 
 | categoria | o que verifica | n |
 |---|---|---|
-| `tests/ok/` | compila, roda na VM do P01, saída confere | 8 |
+| `tests/ok/` | compila, roda na VM do P01, saída confere | 16 |
 | `tests/err/` | o **verificador de tipos** recusa, com a mensagem certa | 6 |
-| `tests/phase2/` | o verificador **aceita** e o backend recusa citando a Fase 2 | 3 |
-| bytes | o `.fbc` do forge é **idêntico** ao do montador em C do P01 | 8 |
+| `tests/phase2/` | o verificador **aceita** e o backend recusa, com motivo | 1 |
+| bytes | o `.fbc` do forge é **idêntico** ao do montador em C do P01 | 16 |
+
+### Ordem superior funciona, e custou uma instrução
+
+A Fase 2 testou a afirmação central do portfólio: o P01 dizia que o bytecode
+foi "desenhado para o P02 estender". Quando o forge precisou de closures,
+quanto da VM precisou mudar?
+
+**Uma instrução.** `CALLI nargs` — chamada indireta, em que o destino vem dos
+dados. Closure é um array comum `[endereço, capturados...]`, então o heap e o
+coletor do P01 bastaram; `PUSH` passou a aceitar rótulo, o que dispensou um
+segundo opcode. Alocar a closure é `NEWARR` + `ASET`, que já existiam.
+
+O que compila agora:
+
+```forge
+let compose f g = \x -> f (g x)     -- lambda capturando duas funcoes
+let dobra x = x * 2
+let mais1 x = x + 1
+let main =
+  let h = compose dobra mais1 in
+  print (h 20)                       -- 42
+```
+
+```forge
+let soma3 a b c = a + b + c
+let main =
+  let p = soma3 1 in                 -- aplicacao parcial
+  let q = p 2 in                     -- e de novo
+  print (q 39)                       -- 42
+```
+
+```forge
+let aplica f x = f x
+let main = aplica print 42           -- builtin como valor
+```
+
+O código gerado para uma captura, com `forge emit`:
+
+```
+soma_com:              ; soma_com a = \x -> x + a
+  PUSH 2
+  NEWARR               ; array de 2: [endereco, capturado]
+  DUP ; PUSH 0 ; PUSH $lam0 ; ASET
+  DUP ; PUSH 1 ; LOAD 0     ; ASET   ; captura 'a'
+  RET
+main:
+  PUSH 10
+  CALL soma_com 1      ; chamada DIRETA: aridade exata, sem alocar closure
+  LOAD 0
+  PUSH 32
+  CALLI 1              ; chamada INDIRETA: o destino sai da closure
+  DUP ; PRINT
+  STORE 0
+  HALT
+$lam0:                 ; (closure = slot 0, x = slot 1)
+  LOAD 1
+  LOAD 0 ; PUSH 1 ; AGET    ; le a captura de dentro da closure
+  ADD
+  RET
+```
+
+Note o `CALL soma_com 1` ao lado do `CALLI 1`: chamada direta a função de topo
+com aridade exata **não** paga closure. O caminho genérico é currificado —
+um argumento por vez — e é o que torna ordem superior, aplicação parcial e
+sobre-aplicação o mesmo mecanismo em vez de três.
+
+### Closures são coletadas como qualquer objeto
+
+A VM não tem tipo de closure: tem array. Logo o mark & sweep já as percorre, e
+uma closure que capture a si mesma seria coletada sem tratamento extra. O teste
+`closure_gc.fg` aloca 5.000 closures descartadas e força uma coleta com a
+closure útil ainda alcançável:
+
+```
+coletas de GC   : 2
+bytes liberados : 320000
+pico de heap    : 262144 bytes
+42                        <- a closure alcancavel sobreviveu
+```
 
 ### A inferência funciona, e a prova é o que ela deduz sozinha
 
@@ -70,15 +151,20 @@ e ela se sustentou, com uma limitação identificada e dimensionada.
 $ forge types tests/ok/polimorfismo.fg
 id : forall t0. t0 -> t0
 
-$ forge types tests/phase2/ordem_superior.fg
-aplica : forall t1 t2. (t1 -> t2) -> t1 -> t2
+$ forge types tests/ok/composicao.fg
+compose : forall t2 t3 t4. (t3 -> t4) -> (t2 -> t3) -> t2 -> t4
 dobra : Int -> Int
+mais1 : Int -> Int
+main : Int
 ```
 
-A segunda linha é o resultado que importa: **um tipo de ordem superior,
-inferido corretamente, num programa que o gerador de código recusa**. Prova que
-o limite está no backend e não no sistema de tipos — e é exatamente isso que
-`tests/phase2/` existe para garantir que continue verdade.
+A primeira linha é o tipo de `compose`, deduzido sem nenhuma anotação — e hoje
+esse programa **compila e roda**, o que antes da Fase 2 não acontecia.
+
+A categoria `tests/phase2/` continua existindo com a limitação que resta
+(`let rec` local): ela exige que o verificador **aceite** e o backend
+**recuse**, o que mantém verificada a afirmação de que o limite está no
+backend e não no sistema de tipos.
 
 O teste `polimorfismo.fg` usa `id` em `Int` e em `Bool` no mesmo programa,
 compila e roda. Sem polimorfismo do `let`, não compilaria.
@@ -250,9 +336,18 @@ existe para que não volte.
 
 ## Limites conhecidos
 
-- **Sem closures nem ordem superior no backend.** Três programas em
-  `tests/phase2/` documentam isso executando. Desenho pronto em
-  [docs/PHASE2.md](docs/PHASE2.md).
+- **`let rec` local não compila.** Recursão local exige uma closure que
+  referencia a si mesma: alocar, guardar no slot e só então gravar o próprio
+  endereço num campo dela. O coletor do P01 lida com o ciclo sem nada extra,
+  então é um incremento pequeno — mas é um incremento. `let rec` de topo
+  funciona, e `tests/phase2/let_rec_local.fg` documenta a limitação executando.
+- **Sem chamada de cauda.** `let rec` de topo recursiva consome um frame por
+  nível, e a VM tem 4.096. Uma recursão de 5.000 níveis estoura — com erro
+  reportado, não corrupção. É o que impede o teste de GC de usar recursão
+  profunda em vez de alocar várias closures por nível.
+- **Closures alocam sempre.** Não há análise de escape nem especialização de
+  chamada conhecida: `compose dobra mais1` aloca três closures. O caminho de
+  chamada direta evita isso só quando a aridade é exata.
 - **Sem recursão mútua** entre declarações de topo.
 - **Tipos:** só `Int` e `Bool`. Sem ponto flutuante, string, lista, tupla,
   registro ou tipo de dado do usuário. O P01 tem arrays no heap e o compilador
@@ -271,10 +366,13 @@ existe para que não volte.
 
 ## Roadmap
 
-1. **Fase 2: closures.** `CALLI` nas duas VMs do P01, conversão de closures no
-   forge. Critério de pronto: os três arquivos de `tests/phase2/` mudam de
-   pasta.
-2. **Porte do verificador para OCaml**, com a mesma suíte. É a comparação que
+1. ~~**Fase 2: closures.**~~ **Concluída.** `CALLI` nas duas VMs do P01 e
+   conversão de closures no forge. Os três arquivos saíram de `tests/phase2/`,
+   que era o critério declarado. Detalhes e as três correções ao desenho
+   original em [docs/PHASE2.md](docs/PHASE2.md).
+2. **`let rec` local**, a última lacuna do backend: closure que referencia a si
+   mesma.
+3. **Porte do verificador para OCaml**, com a mesma suíte. É a comparação que
    o P02 promete: o mesmo Algoritmo W em Haskell e em OCaml, medido em linhas,
    em legibilidade e em tempo de compilação.
 3. **Posição na AST**, para erros de tipo apontarem a linha.
@@ -290,6 +388,16 @@ existe para que não volte.
 
 ## Aprendizados
 
+- **"Uma instrução" era mesmo uma instrução.** O documento de desenho da Fase
+  2 estimou o custo antes de implementar: 1 opcode novo, ~45 linhas nas duas
+  VMs, ~150 no compilador. O real foi 1 opcode, ~45 linhas e ~120. Estimar
+  antes e conferir depois é o que transforma "não implementei" em "não
+  implementei ainda".
+- **O desenho errou três detalhes, e o código os encontrou.** A closure não
+  pode ser desempilhada (precisa ficar como slot 0); currificar tudo no caminho
+  genérico unifica três casos em um; e provar que o coletor recicla closures
+  exigiu um builtin `gc` que não estava previsto. O documento foi corrigido em
+  vez de reescrito, para que a diferença fique visível.
 - **Um comentário que explica uma invariante encontra bugs antes do teste.** O
   bug de slot do operando direito apareceu enquanto eu escrevia por que a
   invariante valia — e não valia.
@@ -317,11 +425,14 @@ existe para que não volte.
 | Inferência de Hindley-Milner (Algoritmo W) | ✅ completa, com teste de ocorrência |
 | Polimorfismo do `let` | ✅ verificado por teste em dois tipos |
 | Geração de bytecode, primeira ordem | ✅ |
-| Identidade de bytes com o montador do P01 | ✅ 8/8 |
-| Execução nas duas VMs do P01 | ✅ C e Rust |
-| Suíte de testes | ✅ 25/25 |
-| CI que clona e compila o P01 | ✅ escrito, pendente do primeiro push |
-| Closures e ordem superior | ⬜ desenho pronto, não implementado |
+| **Closures, ordem superior, aplicação parcial** | ✅ Fase 2, com 1 instrução nova na VM |
+| Captura de variável livre, composição | ✅ |
+| Builtins como valor (`print`, `gc`) | ✅ via invólucro gerado |
+| Identidade de bytes com o montador do P01 | ✅ 16/16 |
+| Execução nas três configurações de VM do P01 | ✅ switch, goto e Rust |
+| Suíte de testes | ✅ 39/39 |
+| CI que clona e compila o P01 | ✅ verde |
+| `let rec` local | ⬜ última lacuna do backend |
 | Porte para OCaml / F# / Lisps / Prolog | ⬜ |
 | Provas em Lean / Coq / Agda / Idris / Isabelle | ⬜ |
 | Backend WebAssembly | ⬜ |
