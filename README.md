@@ -203,6 +203,14 @@ bash build.sh                       # compila o forge com ghc, sem cabal
 # precisa do P01 para os testes de ponta a ponta
 bash tests/run_tests.sh             # 39 verificações
 bash tests/run_tests.sh build/forge ../p01-metal-vm/build-switch/fvm
+
+# Os dois portes do verificador. Cada um precisa so da sua toolchain, e
+# verifica.sh falha alto no que nao estiver compilado em vez de pular.
+cd ports/ocaml  && ocamlopt -o forge_check forge_check.ml && cd ../..
+cd ports/fsharp && dotnet build -c Release && cd ../..
+
+bash ports/verifica.sh         # 23 casos x 2 portes, byte a byte
+bash ports/verifica.sh ocaml   # so esse
 ```
 
 O compilador **não tem dependências externas** — só `base`, `containers` e
@@ -262,6 +270,123 @@ Quatro decisões estruturais:
 
 Referência da linguagem: [docs/LANGUAGE.md](docs/LANGUAGE.md).
 Desenho das closures: [docs/PHASE2.md](docs/PHASE2.md).
+
+## Dois portes do verificador: OCaml e F#
+
+O mesmo Algoritmo W em **três linguagens da mesma família**, com saída **byte a
+byte idêntica** nos 23 casos de `tests/`.
+
+```
+bash ports/verifica.sh     # 23 casos × 2 portes contra a referência
+```
+
+Haskell, OCaml e F# são as linguagens *em que compiladores são escritos*, e
+implementar o mesmo verificador nas três é um dos exercícios mais reveladores
+que existem — era o que o plano do projeto dizia, e o resultado confirma.
+
+### O contrato é mais severo do que "aceita ou recusa"
+
+`forge types` imprime o tipo inferido com **os nomes das variáveis de tipo**:
+
+```
+compose : forall t2 t3 t4. (t3 -> t4) -> (t2 -> t3) -> t2 -> t4
+```
+
+Casar isso obriga o porte a gerar variáveis frescas na **mesma ordem** que a
+referência, o que só acontece percorrendo a árvore na mesma ordem em cada regra
+do algoritmo. **Um porte que inferisse os tipos certos com numeração diferente
+falha.** E os seis casos de erro exigem a mensagem idêntica, inclusive o número
+da variável:
+
+```
+forge: erro de tipo: em 'bad': tipo infinito: t0 ocorre em t0 -> t1
+```
+
+É o análogo, aqui, da exigência de `.fbc` byte-idêntico nos portes do P01.
+
+### Os três detalhes que decidiram o casamento
+
+Nenhum é óbvio, e cada um produziria tipos *corretos* com saída *diferente*:
+
+1. **o contador de variáveis frescas é global ao programa** — `inferProgram`
+   roda **um** `runInfer` para todas as declarações, então a numeração continua
+   de uma para a outra;
+2. **`generalize` ordena lexicograficamente**, porque `Data.Set.toList` usa
+   `Ord String` — então **`t10` vem antes de `t2`**. Um porte que ordenasse
+   numericamente divergiria em qualquer programa com mais de dez variáveis;
+3. **`composeSubst` tem união enviesada à esquerda** — as chaves vindas de `s2`
+   ganham. Em F#, união de mapas não existe na biblioteca, e o enviesamento
+   virou código explícito em vez de convenção.
+
+### A tabela comparativa
+
+Linhas do **frontend apenas**, sem comentários. `forge types` num programa
+pequeno, melhor de 9, **no sistema de arquivos nativo do Linux**:
+
+| impl | linhas | `types` | dispersão | executável |
+|---|---|---|---|---|
+| **Haskell** (referência) | 533 | 8 ms | 25% | 2,9 MB |
+| **OCaml** | 604 | **7 ms** | 71% | **1,6 MB** |
+| **F#** (ReadyToRun) | **496** | 66 ms | 183% | 84 MB |
+| **F#** (framework) | — | 118 ms | 128% | — |
+
+**O F# escreveu em menos linhas que o Haskell** — 496 contra 533 — e é o mais
+lento a partir, por 8x a 17x. A causa não é o algoritmo: é inicialização do
+runtime .NET mais JIT, e `ReadyToRun` corta quase metade sem fechar a
+diferença.
+
+Isso importa **para este uso**: um compilador de linha de comando paga a
+partida em cada arquivo. Num processo longo, o custo é pago uma vez.
+
+**Haskell e OCaml são indistinguíveis** aqui: 8 contra 7 ms com dispersão de
+25% e 71%. Dizer que um é mais rápido seria invenção.
+
+### O F# deixa a exaustividade passar como aviso
+
+O achado que mais importa dos dois portes: **casamento de padrões não
+exaustivo é aviso em F# (FS0025), não erro.** Sem
+`<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` no `.fsproj`, um caso
+faltando compila e explode em execução — exatamente o que o sistema de tipos
+deveria impedir. Em OCaml, o mesmo descuido é erro de compilação por padrão.
+
+Num verificador de tipos, onde cada construção da linguagem é um caso de
+`match`, essa diferença é a distância entre "o compilador me protege" e "o
+compilador me avisa se eu estiver lendo".
+
+### A armadilha que quase me fez publicar o contrário
+
+A primeira medição deu **ReadyToRun mais lento** que o framework-dependent:
+366 ms contra 246 ms, contradizendo o propósito dele.
+
+A causa não era o .NET: era **onde os arquivos estavam.** Este repositório fica
+em `/mnt/c`, o sistema de arquivos do Windows visto pelo WSL2, lento para abrir
+muitos arquivos pequenos — e o build autocontido tem 84 MB em centenas de DLLs.
+
+Copiando os **mesmos binários** para o sistema de arquivos nativo:
+
+| | `/mnt/c` | `/root` | fator |
+|---|---|---|---|
+| F# ReadyToRun | 366 ms | **66 ms** | **5,5x** |
+| F# framework | 246 ms | 119 ms | 2,1x |
+| OCaml (controle) | 23 ms | 15 ms | 1,5x |
+
+O controle com o OCaml é o que prova a causa: ele também melhorou, mas só 1,5x,
+porque é **um** arquivo de 1,6 MB. O confundidor não foi carga de CPU, foi
+**sistema de arquivos** — variável que o resto do portfólio não tinha
+encontrado, e por isso a tabela declara onde foi medida.
+
+### O limite de verificar por equivalência
+
+Os portes não geram código, então nada aqui verifica que a inferência produziu
+tipos *úteis* — só que produziu os **mesmos** da referência. **Se a referência
+estiver errada, os portes concordam com o erro.**
+
+É a limitação estrutural de verificar contra outra implementação em vez de
+contra uma especificação, e é o que as provas formais do roadmap (Lean, Coq,
+Agda, Idris) existem para resolver: elas verificam o algoritmo contra o
+**teorema**.
+
+`ports/README.md` tem o ensaio completo.
 
 ## Linguagens e ferramentas
 

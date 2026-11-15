@@ -11,6 +11,52 @@ on:
   pull_request:
 
 jobs:
+  # Os dois portes do verificador, num job separado: eles nao dependem da VM
+  # do P01 (nao geram codigo), so da referencia em Haskell.
+  #
+  # O que o CI verifica e o que NAO depende da maquina: saida byte a byte
+  # identica a referencia nos 23 casos, inclusive os nomes das variaveis de
+  # tipo e o numero da variavel na mensagem de tipo infinito. A tabela de
+  # tempos do README foi medida localmente, e esta declarado la que o sistema
+  # de arquivos muda o numero por um fator de 5,5x.
+  portes:
+    runs-on: ubuntu-latest
+    name: portes do verificador (OCaml, F#)
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: instalar GHC e OCaml
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ghc ocaml
+          ghc --version
+          ocamlopt -version
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: referencia em Haskell
+        run: bash build.sh
+
+      - name: porte em OCaml
+        working-directory: ports/ocaml
+        run: ocamlopt -o forge_check forge_check.ml
+
+      - name: porte em F#
+        working-directory: ports/fsharp
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+          DOTNET_NOLOGO: '1'
+        run: dotnet build -c Release
+
+      - name: 23 casos x 2 portes, byte a byte
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+          DOTNET_NOLOGO: '1'
+        run: bash ports/verifica.sh
+
   build-and-test:
     runs-on: ubuntu-latest
     steps:

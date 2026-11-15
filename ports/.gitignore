@@ -1,0 +1,13 @@
+# Artefatos de compilação dos portes.
+
+# OCaml
+ocaml/forge_check
+ocaml/*.cm*
+ocaml/*.o
+
+# F# / .NET
+fsharp/bin/
+fsharp/obj/
+# O build autocontido tem 84 MB. Nunca vai para o repositorio -- e e
+# justamente o numero que a tabela do README compara com 1,6 MB do OCaml.
+fsharp/pub/
