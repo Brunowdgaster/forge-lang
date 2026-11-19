@@ -56,15 +56,19 @@ declare -A CMD=(
   # comando de build -- e a mensagem de "nao compilado" tem de dizer isso,
   # senao manda compilar algo que nao se compila.
   [prolog]="bash ports/prolog/roda.sh"
+  # Racket tambem nao compila para binario aqui -- ver o comentario no
+  # ports/racket/roda.sh sobre por que `raco exe` nao entra.
+  [racket]="bash ports/racket/roda.sh"
 )
 
 declare -A COMO=(
   [ocaml]="cd ports/ocaml && ocamlopt -o forge_check forge_check.ml"
   [fsharp]="cd ports/fsharp && dotnet build -c Release"
   [prolog]="sudo apt-get install -y swi-prolog-nox   (nao ha o que compilar)"
+  [racket]="sudo apt-get install -y racket   (nao ha o que compilar)"
 )
 
-ORDEM=(ocaml fsharp prolog)
+ORDEM=(ocaml fsharp prolog racket)
 [ $# -gt 0 ] && ORDEM=("$@")
 
 echo

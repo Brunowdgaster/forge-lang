@@ -1,15 +1,104 @@
 # Portes do verificador de tipos
 
-O mesmo Algoritmo W em **quatro linguagens** — Haskell (a referência), OCaml,
-F# e **Prolog** — com saída **byte a byte idêntica** nos 23 casos de `tests/`.
+O mesmo Algoritmo W em **cinco linguagens** — Haskell (a referência), OCaml,
+F#, **Prolog** e **Racket** — com saída **byte a byte idêntica** nos 23 casos
+de `tests/`.
 
 ```
-bash ports/verifica.sh            # 23 casos × 3 portes contra a referência
-bash ports/verifica.sh prolog     # só esse
+bash ports/verifica.sh            # 23 casos × 4 portes contra a referência
+bash ports/verifica.sh racket     # só esse
 ```
 
-As três primeiras são da mesma família (ML). O Prolog **não é**, e é por isso
-que ele entrou: ver [o porte em Prolog](#o-porte-em-prolog-e-a-armadilha-que-eu-esperava-atalho).
+As três primeiras são da mesma família (ML) e têm inferência própria. As duas
+últimas **não**, e é por isso que entraram:
+
+| porte | família | o que ele responde |
+|---|---|---|
+| OCaml, F# | ML | o algoritmo se escreve igual numa linguagem irmã? |
+| **Prolog** | lógica | unificação nativa ajuda? (**não** — ver abaixo) |
+| **Racket** | Lisp, **dinâmica** | quanto do algoritmo é sustentado pelo sistema de tipos de quem o escreve? |
+
+### As linhas de código, que é o número que o projeto mede
+
+| | linhas |
+|---|---|
+| F# | 496 |
+| Haskell (`Infer`+`Types`+`Parser`+`Lexer`) | 494 |
+| OCaml | 468 |
+| **Racket** | **397** |
+| **Prolog** | **338** |
+
+*(sem comentários nem linhas vazias; Prolog e Racket incluem `check`, `types` e
+`version`)*
+
+As duas linguagens dinâmicas são as mais curtas — e por razões **diferentes**,
+que são o conteúdo das duas seções seguintes.
+
+## O porte em Racket, e o defeito silencioso que ele me ensinou
+
+Racket é a primeira linguagem **dinamicamente tipada** aqui, e a pergunta que
+ela responde é concreta: *quanto do Algoritmo W é sustentado pelo sistema de
+tipos de quem o escreve, e quanto é só a estrutura do algoritmo?*
+
+**A estrutura sobrevive inteira.** As 11 regras de inferência saíram com a
+mesma forma do Haskell, com `define-values` no lugar do `do`, e o porte ficou
+**20 % mais curto** (397 contra 494) — quase todo o ganho em não declarar
+tipos de dados nem assinaturas.
+
+### O que se perde é a rede, e eu caí nela na primeira execução
+
+As structs da AST chamavam-se `var` e `app`. **As duas são formas de padrão do
+`racket/match`.** O resultado, medido numa sonda de nove linhas:
+
+```racket
+(struct var (nome) #:transparent)
+
+(match (seq (var "x") (var "y"))
+  [(var x)   (format "CASOU -- x = ~a" x)]
+  [(seq a b) "o correto"])
+
+;; => CASOU -- x = #(struct:seq #(struct:var x) #(struct:var y))
+```
+
+O `(var id)` do `match` **liga `id` ao valor inteiro** — é a forma de ligar uma
+variável sem ambiguidade com palavras-chave de padrão. Ela sombreou a struct, e
+o terceiro ramo do `match` virou um **curinga** onde eu havia escrito um teste
+de tipo. Toda expressão que não fosse literal passou a ser tratada como
+referência a variável.
+
+O sintoma foi:
+
+```
+forge: erro de tipo: em 'main': variavel nao definida: #(struct:seq #(struct:app ...
+```
+
+A mensagem é da **minha** regra de variável não definida, aplicada a uma
+expressão que nunca deveria ter chegado nela. Ela não menciona `match`, nem
+padrão, nem sombreamento.
+
+> **Em Haskell isso não acontece.** Um construtor que colidisse seria erro de
+> nome, e um `case` com ramo inalcançável é avisado por
+> `-Woverlapping-patterns`. Aqui o compilador não tem como saber que eu quis a
+> struct e não a forma de padrão: as duas se escrevem igual.
+
+A correção foi prefixar as structs de expressão com `e-`. E a lista que eu
+gostaria de ter lido antes está no topo do arquivo:
+
+```
+app  var  struct  and  or  not  list  list*  vector  cons  box
+quote  quasiquote  ?  regexp  pregexp  hash-table  list-no-order
+```
+
+Qualquer struct com um desses nomes vira um padrão com outro significado, **sem
+aviso**.
+
+### E o que Racket deu em troca
+
+`match` com padrões aninhados, e a simetria de Lisp entre construir e
+desconstruir: o `(e-app f a)` do padrão é o mesmo texto que o `(e-app f a)` do
+construtor. Em Haskell também, mas aqui vale notar que foi exatamente essa
+simetria que criou a armadilha acima — a mesma propriedade que torna o código
+curto é a que deixa o sombreamento invisível.
 
 ## O porte em Prolog, e a armadilha que eu esperava ser atalho
 
@@ -60,17 +149,8 @@ deliberada:
 
 ### O que Prolog contribuiu de verdade: o parser
 
-| | linhas de código |
-|---|---|
-| Haskell (`Infer` + `Types` + `Parser` + `Lexer`) | 494 |
-| F# | 496 |
-| OCaml | 468 |
-| **Prolog** | **338** |
-
-*(sem comentários nem linhas vazias, medido com `grep -v`)*
-
-Um terço menos que a referência — e o ganho está quase todo no parser. As DCG
-**são** a gramática:
+É o porte mais curto dos quatro (338 linhas, um terço menos que a referência),
+e o ganho está quase todo no parser. As DCG **são** a gramática:
 
 ```prolog
 expr(E) --> [kw(if)], !, expr(C), [kw(then)], expr(A), [kw(else)], expr(B),

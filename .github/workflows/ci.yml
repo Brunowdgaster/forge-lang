@@ -21,7 +21,7 @@ jobs:
   # de arquivos muda o numero por um fator de 5,5x.
   portes:
     runs-on: ubuntu-latest
-    name: portes do verificador (OCaml, F#, Prolog)
+    name: portes do verificador (OCaml, F#, Prolog, Racket)
     steps:
       - uses: actions/checkout@v5
 
@@ -29,10 +29,17 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
+          # `--no-install-recommends` no Racket: o pacote cheio arrasta
+          # documentacao e bibliotecas graficas que nada aqui usa, e o
+          # verificador so precisa de `racket/base`, `racket/match`,
+          # `racket/list`, `racket/string` e `racket/port` -- todos na
+          # distribuicao minima.
           sudo apt-get install -y -qq ghc ocaml swi-prolog-nox
+          sudo apt-get install -y -qq --no-install-recommends racket
           ghc --version
           ocamlopt -version
           swipl --version
+          racket --version
 
       - uses: actions/setup-dotnet@v4
         with:
