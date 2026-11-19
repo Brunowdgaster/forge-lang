@@ -21,7 +21,7 @@ jobs:
   # de arquivos muda o numero por um fator de 5,5x.
   portes:
     runs-on: ubuntu-latest
-    name: portes do verificador (OCaml, F#)
+    name: portes do verificador (OCaml, F#, Prolog)
     steps:
       - uses: actions/checkout@v5
 
@@ -29,9 +29,10 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y -qq ghc ocaml
+          sudo apt-get install -y -qq ghc ocaml swi-prolog-nox
           ghc --version
           ocamlopt -version
+          swipl --version
 
       - uses: actions/setup-dotnet@v4
         with:

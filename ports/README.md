@@ -1,13 +1,120 @@
 # Portes do verificador de tipos
 
-O mesmo Algoritmo W em **três linguagens da mesma família** — Haskell (a
-referência), OCaml e F# — com saída **byte a byte idêntica** nos 23 casos de
-`tests/`.
+O mesmo Algoritmo W em **quatro linguagens** — Haskell (a referência), OCaml,
+F# e **Prolog** — com saída **byte a byte idêntica** nos 23 casos de `tests/`.
 
 ```
-bash ports/verifica.sh            # 23 casos × 2 portes contra a referência
-bash ports/verifica.sh ocaml      # só esse
+bash ports/verifica.sh            # 23 casos × 3 portes contra a referência
+bash ports/verifica.sh prolog     # só esse
 ```
+
+As três primeiras são da mesma família (ML). O Prolog **não é**, e é por isso
+que ele entrou: ver [o porte em Prolog](#o-porte-em-prolog-e-a-armadilha-que-eu-esperava-atalho).
+
+## O porte em Prolog, e a armadilha que eu esperava ser atalho
+
+A expectativa era óbvia: o Algoritmo W **é** unificação, unificação é a
+operação primitiva de Prolog, então o porte deveria ser quase transcrever as
+regras de tipo.
+
+**A expectativa estava errada por dois motivos independentes**, e os dois são
+mais interessantes que o atalho que eu esperava.
+
+### 1. A unificação de Prolog é a errada para isto
+
+```prolog
+?- X = f(X).
+X = f(f(f(f(f(f(f(f(f(f(...)))))))))).
+```
+
+O `=/2` **não faz teste de ocorrência**. Ele aceita `t0 = t0 -> t1` e constrói
+um termo cíclico — que é exatamente o erro que `tests/err/tipo_infinito.fg`
+existe para pegar, e que o `Types.hs` detecta à mão:
+
+```haskell
+| v `S.member` ftv t = Left $ "tipo infinito: " ++ v ++ " ocorre em " ++ ...
+```
+
+O ISO Prolog tem `unify_with_occurs_check/2`, que faz a coisa certa. **Não é o
+padrão**, e a razão é desempenho: o teste é O(tamanho do termo) a cada ligação.
+
+> Prolog dá unificação de graça, mas **a variante que um verificador de tipos
+> precisa tem de ser pedida por nome.** Quem escrever um inferidor com `=/2`
+> terá um programa que aceita `\x -> x x` e trava ao imprimir o resultado.
+
+### 2. E mesmo a variante certa não serve aqui
+
+O porte **não usa** a unificação de Prolog. As substituições são explícitas,
+listas de `Var-Tipo`, espelhando o `Types.hs` linha a linha. A decisão é
+deliberada:
+
+* o contrato exige que `t0`, `t1`, `t2` apareçam na **mesma ordem** que o
+  Haskell gera, e essa ordem vem de um contador de estado (`StateT Int`)
+  percorrido numa sequência precisa. Com variáveis Prolog, a identidade de
+  cada uma é do motor — nomeá-las na ordem certa exigiria reconstruir o
+  contador de qualquer forma;
+* e o `composeSubst` do Haskell tem uma **ordem de composição** que a
+  unificação destrutiva de Prolog não expressa. `composeSubst s1 s2` aplica
+  s2 e depois s1, com `M.union` *left-biased*; o motor de Prolog liga
+  variáveis e não compõe mapas.
+
+### O que Prolog contribuiu de verdade: o parser
+
+| | linhas de código |
+|---|---|
+| Haskell (`Infer` + `Types` + `Parser` + `Lexer`) | 494 |
+| F# | 496 |
+| OCaml | 468 |
+| **Prolog** | **338** |
+
+*(sem comentários nem linhas vazias, medido com `grep -v`)*
+
+Um terço menos que a referência — e o ganho está quase todo no parser. As DCG
+**são** a gramática:
+
+```prolog
+expr(E) --> [kw(if)], !, expr(C), [kw(then)], expr(A), [kw(else)], expr(B),
+            { E = if(C, A, B) }.
+
+add_expr(E) --> mul_expr(L), add_loop(L, E).
+add_loop(L, E) --> [sym('+')], !, mul_expr(R), add_loop(bin(add, L, R), E).
+```
+
+No Haskell, o mesmo é descida recursiva com a lista de tokens passada
+explicitamente por uma mônada de estado. Aqui a lista é implícita, e as regras
+se leem como a gramática que elas são.
+
+> O resumo honesto: **Prolog não ajudou na parte que eu esperava e ajudou
+> muito na parte que eu não esperava.** A inferência saiu do mesmo tamanho; o
+> parser encolheu pela metade.
+
+### Dois defeitos do caminho, que valem mais que o resultado
+
+**`%` inicia comentário em Prolog.** A regra do operador de módulo era
+`mul_loop(L, E) --> [sym(%)], !, ...` — e o `%` apagou o resto da linha. O erro
+foi:
+
+```
+Syntax error: Operator expected
+```
+
+numa coluna onde não há operador nenhum, porque a linha que o parser viu
+terminava ali. Todos os símbolos passaram a ser citados (`sym('%')`), inclusive
+os que funcionariam — deixar alguns citados e outros não é convidar o próximo
+erro.
+
+**E a diretiva do topo mudou o significado de todas as aspas do arquivo.** O
+lexer precisa de `:- set_prolog_flag(double_quotes, codes)` para casar
+`sym_duplo("<=", '<=')` com `append/3`. A consequência é que `"Int"` no
+impressor virou `[73,110,116]`, e 11 dos 23 casos quebraram com:
+
+```
+string_concat/3: Type error: `atomic' expected, found `[73,110,116]' (a list)
+```
+
+A mensagem fala de tipo errado numa função de concatenação, e aponta a linha do
+`main/1`. **Não menciona a diretiva**, que está 60 linhas acima e é a causa. A
+correção foi usar átomos (`'Int'`), que não dependem da flag.
 
 ## O contrato é mais severo do que "aceita ou recusa"
 

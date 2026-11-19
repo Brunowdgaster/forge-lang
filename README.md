@@ -271,7 +271,7 @@ Quatro decisões estruturais:
 Referência da linguagem: [docs/LANGUAGE.md](docs/LANGUAGE.md).
 Desenho das closures: [docs/PHASE2.md](docs/PHASE2.md).
 
-## Dois portes do verificador: OCaml e F#
+## Três portes do verificador: OCaml, F# e Prolog
 
 O mesmo Algoritmo W em **três linguagens da mesma família**, com saída **byte a
 byte idêntica** nos 23 casos de `tests/`.
@@ -506,8 +506,11 @@ existe para que não volte.
 5. **Backend WebAssembly** (`.wat` escrito à mão primeiro), para ter dois
    alvos e poder comparar a geração de código.
 6. **Recursão mútua** via componentes fortemente conexos.
-7. **Regras de tipo em Prolog**, que é a forma declarativa de escrever
-   unificação — o algoritmo *é* Prolog.
+7. ~~**Regras de tipo em Prolog**~~ **Concluída** — e com a expectativa
+   refutada: o algoritmo *não* é Prolog de graça. O `=/2` não faz teste de
+   ocorrência, e a variante que serve (`unify_with_occurs_check/2`) não é o
+   padrão. O ganho veio do parser, onde as DCG são a gramática: **338 linhas
+   contra 494 da referência.** Ver [ports/README.md](ports/README.md).
 8. **Interpretador meta-circular em Racket/Scheme/Common Lisp**, para o eixo
    de homoiconicidade e macros.
 

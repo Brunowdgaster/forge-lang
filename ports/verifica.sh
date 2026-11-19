@@ -51,14 +51,20 @@ REF="${REF:-build/forge}"
 declare -A CMD=(
   [ocaml]="ports/ocaml/forge_check"
   [fsharp]="dotnet ports/fsharp/bin/Release/net10.0/forge_check.dll"
+  # O Prolog nao compila para binario: o runner invoca o interpretador. Por
+  # isso a entrada em COMO abaixo e uma checagem de presenca, e nao um
+  # comando de build -- e a mensagem de "nao compilado" tem de dizer isso,
+  # senao manda compilar algo que nao se compila.
+  [prolog]="bash ports/prolog/roda.sh"
 )
 
 declare -A COMO=(
   [ocaml]="cd ports/ocaml && ocamlopt -o forge_check forge_check.ml"
   [fsharp]="cd ports/fsharp && dotnet build -c Release"
+  [prolog]="sudo apt-get install -y swi-prolog-nox   (nao ha o que compilar)"
 )
 
-ORDEM=(ocaml fsharp)
+ORDEM=(ocaml fsharp prolog)
 [ $# -gt 0 ] && ORDEM=("$@")
 
 echo
