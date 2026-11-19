@@ -59,6 +59,10 @@ declare -A CMD=(
   # Racket tambem nao compila para binario aqui -- ver o comentario no
   # ports/racket/roda.sh sobre por que `raco exe` nao entra.
   [racket]="bash ports/racket/roda.sh"
+  # SBCL compila o arquivo a cada invocacao. Nao ha binario, e `--script`
+  # desliga o depurador -- sem isso uma condicao nao tratada abriria o
+  # depurador interativo e o teste travaria esperando entrada.
+  [lisp]="bash ports/lisp/roda.sh"
 )
 
 declare -A COMO=(
@@ -66,9 +70,10 @@ declare -A COMO=(
   [fsharp]="cd ports/fsharp && dotnet build -c Release"
   [prolog]="sudo apt-get install -y swi-prolog-nox   (nao ha o que compilar)"
   [racket]="sudo apt-get install -y racket   (nao ha o que compilar)"
+  [lisp]="sudo apt-get install -y sbcl   (nao ha o que compilar)"
 )
 
-ORDEM=(ocaml fsharp prolog racket)
+ORDEM=(ocaml fsharp prolog racket lisp)
 [ $# -gt 0 ] && ORDEM=("$@")
 
 echo

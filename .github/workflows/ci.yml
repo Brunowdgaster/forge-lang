@@ -21,7 +21,7 @@ jobs:
   # de arquivos muda o numero por um fator de 5,5x.
   portes:
     runs-on: ubuntu-latest
-    name: portes do verificador (OCaml, F#, Prolog, Racket)
+    name: portes do verificador (OCaml, F#, Prolog, Racket, Lisp)
     steps:
       - uses: actions/checkout@v5
 
@@ -36,10 +36,12 @@ jobs:
           # distribuicao minima.
           sudo apt-get install -y -qq ghc ocaml swi-prolog-nox
           sudo apt-get install -y -qq --no-install-recommends racket
+          sudo apt-get install -y -qq sbcl
           ghc --version
           ocamlopt -version
           swipl --version
           racket --version
+          sbcl --version
 
       - uses: actions/setup-dotnet@v4
         with:

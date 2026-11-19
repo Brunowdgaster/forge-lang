@@ -1,22 +1,23 @@
 # Portes do verificador de tipos
 
-O mesmo Algoritmo W em **cinco linguagens** — Haskell (a referência), OCaml,
-F#, **Prolog** e **Racket** — com saída **byte a byte idêntica** nos 23 casos
-de `tests/`.
+O mesmo Algoritmo W em **seis linguagens** — Haskell (a referência), OCaml,
+F#, **Prolog**, **Racket** e **Common Lisp** — com saída **byte a byte
+idêntica** nos 23 casos de `tests/`.
 
 ```
-bash ports/verifica.sh            # 23 casos × 4 portes contra a referência
-bash ports/verifica.sh racket     # só esse
+bash ports/verifica.sh            # 23 casos × 5 portes contra a referência
+bash ports/verifica.sh lisp       # só esse
 ```
 
-As três primeiras são da mesma família (ML) e têm inferência própria. As duas
-últimas **não**, e é por isso que entraram:
+As três primeiras são da mesma família (ML) e têm inferência própria. As três
+últimas **não**, e cada uma entrou para responder uma pergunta diferente:
 
 | porte | família | o que ele responde |
 |---|---|---|
 | OCaml, F# | ML | o algoritmo se escreve igual numa linguagem irmã? |
 | **Prolog** | lógica | unificação nativa ajuda? (**não** — ver abaixo) |
-| **Racket** | Lisp, **dinâmica** | quanto do algoritmo é sustentado pelo sistema de tipos de quem o escreve? |
+| **Racket** | Lisp, dinâmica | quanto do algoritmo depende do sistema de tipos de quem o escreve? |
+| **Common Lisp** | Lisp, **sem `match`** | quanto custa não ter casamento de padrão? |
 
 ### As linhas de código, que é o número que o projeto mede
 
@@ -25,14 +26,106 @@ As três primeiras são da mesma família (ML) e têm inferência própria. As d
 | F# | 496 |
 | Haskell (`Infer`+`Types`+`Parser`+`Lexer`) | 494 |
 | OCaml | 468 |
+| **Common Lisp** | **415** |
 | **Racket** | **397** |
 | **Prolog** | **338** |
 
-*(sem comentários nem linhas vazias; Prolog e Racket incluem `check`, `types` e
+*(sem comentários nem linhas vazias; os três últimos incluem `check`, `types` e
 `version`)*
 
-As duas linguagens dinâmicas são as mais curtas — e por razões **diferentes**,
-que são o conteúdo das duas seções seguintes.
+### E a comparação mais informativa da tabela é entre os dois Lisps
+
+Racket e Common Lisp são a mesma família, com a mesma AST e a mesma estrutura
+de inferência. A **única** diferença de desenho entre os dois portes é que
+Racket tem `racket/match` e **ANSI Common Lisp não tem casamento de padrão
+nenhum**.
+
+A diferença medida: **18 linhas**, 4,5 %.
+
+Eu esperava mais. Escrever `(e-app-f e)` e `(e-app-a e)` onde o Racket escreve
+`[(e-app f a) ...]` parecia que ia custar caro, e custa — **em legibilidade, não
+em volume.** A regra de aplicação em Common Lisp é:
+
+```lisp
+(e-app
+ (multiple-value-bind (s1 tf) (infer env (e-app-f e))
+   (multiple-value-bind (s2 ta) (infer (apply-env s1 env) (e-app-a e))
+     ...
+```
+
+e em Racket:
+
+```racket
+[(e-app f a)
+ (define-values (s1 tf) (infer env f))
+ (define-values (s2 ta) (infer (apply-env s1 env) a))
+ ...
+```
+
+O campo aparece duas vezes no primeiro (`e-app-f e`) e uma no segundo (`f`). É
+a mesma informação escrita com mais cerimônia, e o número confirma que a
+cerimônia é barata em linhas.
+
+**Mas a exaustividade muda de natureza**, e aí a diferença não é cosmética:
+
+| | quando um construtor não é tratado |
+|---|---|
+| Haskell | **erro de compilação** (`-Wincomplete-patterns`) |
+| Common Lisp (`etypecase`) | `type-error` em execução, no caso de teste que o exercitar |
+| Racket (`match`) | falha de padrão em execução — **ou cai no `_`, se houver** |
+
+O `etypecase` é melhor que o `match` aqui: ele **não tem curinga**, então
+esquecer um ramo é sempre um erro, nunca um silêncio.
+
+As três seções seguintes contam o que cada porte não-ML ensinou.
+
+## O porte em Common Lisp, e a armadilha de `assoc`
+
+O achado principal está na tabela acima: não ter casamento de padrão custa 18
+linhas e muita cerimônia.
+
+O que **não** estava previsto foi `assoc`:
+
+```lisp
+(assoc "x" '(("x" . 1)))                  ; => NIL
+(assoc "x" '(("x" . 1)) :test #'string=)  ; => ("x" . 1)
+```
+
+`assoc` usa `eql` por padrão, e `eql` em strings compara **identidade de
+objeto**, não conteúdo — medido:
+
+```lisp
+(eql "x" "x")              ; => NIL   (duas strings de mesmo conteúdo)
+(let ((s "x")) (eql s s))  ; => T     (a mesma string)
+```
+
+Se o porte não passasse `:test`, o sintoma seria `variavel nao definida` para
+**todas** as variáveis — um erro que parece de lógica do algoritmo e é de
+comparação de chaves.
+
+**Para ser exato: eu não caí nessa.** O arquivo foi escrito com `:test
+#'string=` desde o início, porque é um comportamento que eu já conhecia. Está
+documentado aqui com a medição ao lado por ser o tipo de detalhe que não
+aparece em nenhuma descrição do Algoritmo W e que decide se ele funciona — não
+porque tenha custado uma depuração.
+
+Toda busca de ambiente e de substituição neste porte passa `:test #'string=`.
+
+### E o que Common Lisp dá de melhor que todos os outros cinco
+
+O **sistema de condições**. O erro deste porte é uma condição de verdade
+(`define-condition`), e o `handler-case` que acrescenta `em 'nome':` **trata**
+a condição e sinaliza uma nova com o contexto.
+
+A diferença é invisível neste programa, porque o `handler-case` desfaz a pilha
+como um `try/catch` qualquer. Mas um `handler-bind` com `restart-case`
+permitiria **retomar a inferência da declaração seguinte sem desfazer a
+pilha** — reportar o erro de `main` e continuar verificando o resto do
+programa, com o estado intacto.
+
+Nenhuma das outras cinco linguagens tem isso. É o único recurso deste
+diretório que não tem equivalente nas outras, e ele está documentado aqui sem
+ser usado — porque usá-lo mudaria a saída, e a saída é o contrato.
 
 ## O porte em Racket, e o defeito silencioso que ele me ensinou
 

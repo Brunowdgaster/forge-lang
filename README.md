@@ -271,7 +271,7 @@ Quatro decisões estruturais:
 Referência da linguagem: [docs/LANGUAGE.md](docs/LANGUAGE.md).
 Desenho das closures: [docs/PHASE2.md](docs/PHASE2.md).
 
-## Quatro portes do verificador: OCaml, F#, Prolog e Racket
+## Cinco portes do verificador: OCaml, F#, Prolog, Racket e Common Lisp
 
 O mesmo Algoritmo W em **três linguagens da mesma família**, com saída **byte a
 byte idêntica** nos 23 casos de `tests/`.
@@ -511,12 +511,13 @@ existe para que não volte.
    ocorrência, e a variante que serve (`unify_with_occurs_check/2`) não é o
    padrão. O ganho veio do parser, onde as DCG são a gramática: **338 linhas
    contra 494 da referência.** Ver [ports/README.md](ports/README.md).
-8. **Interpretador meta-circular em Scheme/Common Lisp**, para o eixo de
-   homoiconicidade e macros. O **Racket** já entrou pelo outro lado — como
-   quarto porte do verificador — e trouxe um achado que vale o item: as
-   structs da AST chamavam-se `var` e `app`, que são **formas de padrão do
-   `racket/match`**, e o sombreamento transformou um teste de tipo num
-   curinga **sem nenhum aviso**.
+8. **Interpretador meta-circular em Scheme**, para o eixo de homoiconicidade e
+   macros. **Racket e Common Lisp já entraram pelo outro lado** — como portes
+   do verificador — e a comparação entre os dois deu o achado mais preciso do
+   diretório: a única diferença de desenho entre eles é que Racket tem
+   `racket/match` e **ANSI CL não tem casamento de padrão nenhum**, e isso
+   custa **18 linhas (4,5 %)**. Menos do que eu esperava: o preço é de
+   legibilidade, não de volume.
 
 ## Aprendizados
 
