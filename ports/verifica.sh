@@ -63,6 +63,10 @@ declare -A CMD=(
   # desliga o depurador -- sem isso uma condicao nao tratada abriria o
   # depurador interativo e o teste travaria esperando entrada.
   [lisp]="bash ports/lisp/roda.sh"
+  # SML COMPILA para binario nativo (MLton, programa inteiro), e o runner
+  # recompila se o fonte for mais novo -- entao a entrada aqui e o runner, nao
+  # o binario, para que a suite nao precise saber que ele existe.
+  [sml]="bash ports/sml/roda.sh"
 )
 
 declare -A COMO=(
@@ -71,9 +75,10 @@ declare -A COMO=(
   [prolog]="sudo apt-get install -y swi-prolog-nox   (nao ha o que compilar)"
   [racket]="sudo apt-get install -y racket   (nao ha o que compilar)"
   [lisp]="sudo apt-get install -y sbcl   (nao ha o que compilar)"
+  [sml]="sudo apt-get install -y mlton   (o roda.sh compila sozinho)"
 )
 
-ORDEM=(ocaml fsharp prolog racket lisp)
+ORDEM=(ocaml fsharp sml prolog racket lisp)
 [ $# -gt 0 ] && ORDEM=("$@")
 
 echo

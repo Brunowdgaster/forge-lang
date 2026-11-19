@@ -1,28 +1,30 @@
 # Portes do verificador de tipos
 
-O mesmo Algoritmo W em **seis linguagens** — Haskell (a referência), OCaml,
-F#, **Prolog**, **Racket** e **Common Lisp** — com saída **byte a byte
-idêntica** nos 23 casos de `tests/`.
+O mesmo Algoritmo W em **sete linguagens** — Haskell (a referência), OCaml,
+F#, **Standard ML**, **Prolog**, **Racket** e **Common Lisp** — com saída
+**byte a byte idêntica** nos 23 casos de `tests/`.
 
 ```
-bash ports/verifica.sh            # 23 casos × 5 portes contra a referência
-bash ports/verifica.sh lisp       # só esse
+bash ports/verifica.sh            # 23 casos × 6 portes contra a referência
+bash ports/verifica.sh sml        # só esse
 ```
 
-As três primeiras são da mesma família (ML) e têm inferência própria. As três
-últimas **não**, e cada uma entrou para responder uma pergunta diferente:
+As quatro primeiras são da família ML e têm inferência própria. As três
+últimas **não**, e cada porte entrou para responder uma pergunta diferente:
 
 | porte | família | o que ele responde |
 |---|---|---|
 | OCaml, F# | ML | o algoritmo se escreve igual numa linguagem irmã? |
+| **Standard ML** | ML, **o ancestral** | o que as gerações seguintes acrescentaram? |
 | **Prolog** | lógica | unificação nativa ajuda? (**não** — ver abaixo) |
 | **Racket** | Lisp, dinâmica | quanto do algoritmo depende do sistema de tipos de quem o escreve? |
 | **Common Lisp** | Lisp, **sem `match`** | quanto custa não ter casamento de padrão? |
 
-### As linhas de código, que é o número que o projeto mede
+### As linhas de código, e o resultado que não estava previsto
 
 | | linhas |
 |---|---|
+| **Standard ML** | **497** |
 | F# | 496 |
 | Haskell (`Infer`+`Types`+`Parser`+`Lexer`) | 494 |
 | OCaml | 468 |
@@ -30,8 +32,26 @@ As três primeiras são da mesma família (ML) e têm inferência própria. As t
 | **Racket** | **397** |
 | **Prolog** | **338** |
 
-*(sem comentários nem linhas vazias; os três últimos incluem `check`, `types` e
-`version`)*
+*(sem comentários nem linhas vazias; os quatro últimos incluem `check`, `types`
+e `version`)*
+
+**Os quatro dialetos de ML ficam dentro de 29 linhas um do outro** — SML 497,
+F# 496, Haskell 494, OCaml 468. Uma faixa de 6 %, para um algoritmo de 500
+linhas escrito quatro vezes.
+
+E os três primeiros estão dentro de **três linhas**.
+
+Isso não era o resultado esperado. Standard ML é de 1983, Haskell de 1990,
+OCaml de 1996, F# de 2005 — e a diferença entre eles, para escrever
+Hindley-Milner, é **ruído de formatação**. O que as gerações seguintes
+acrescentaram (classes de tipo, mônadas, objetos, interoperação com .NET) não
+muda o tamanho deste problema, porque o problema é exatamente aquele para o
+qual a família foi desenhada.
+
+A diferença real aparece nas três últimas linhas da tabela, e é de **78 a 159
+linhas**: o que se economiza é a declaração dos tipos de dados e das
+assinaturas. Nenhuma das dinâmicas economiza na *lógica* — as 11 regras de
+inferência têm a mesma forma em todas as sete.
 
 ### E a comparação mais informativa da tabela é entre os dois Lisps
 
@@ -78,6 +98,42 @@ O `etypecase` é melhor que o `match` aqui: ele **não tem curinga**, então
 esquecer um ramo é sempre um erro, nunca um silêncio.
 
 As três seções seguintes contam o que cada porte não-ML ensinou.
+
+## O porte em Standard ML, e a palavra reservada mais mesquinha do diretório
+
+O porte compilou de primeira no sentido que importa — os 23 casos bateram sem
+nenhum ajuste de lógica. O que não compilou foi o arquivo, por uma razão de
+três caracteres:
+
+```
+Error: forge-check.sml 253.24-253.24.
+  Syntax error: inserting  ASTERISK.
+```
+
+**`op` é palavra reservada em SML.** É o prefixo que transforma um operador
+infixo em função (`op +`, `op ::`), e eu a usei como nome de variável para o
+operador binário da AST — `EBin (op, a, b)`.
+
+A mensagem é um primor de inutilidade: o compilador esperava um `*` porque,
+depois de `op`, a gramática espera um **operador**, e `,` não é um. Ela aponta
+a coluna 24 da linha 253, onde não há nada de errado, e não menciona palavra
+reservada em lugar nenhum.
+
+Em OCaml e F#, `op` é identificador comum. É a diferença mais mesquinha entre
+os três dialetos, e a única que impediu o arquivo de compilar.
+
+### E a biblioteca padrão é a mais enxuta das quatro
+
+Não há `List.sort_uniq` (OCaml tem), não há `filter_map`, e não há `Set` para
+strings sem instanciar um functor. Este porte ordena e desduplica à mão, com
+uma ordenação por inserção — que basta, porque as listas reais têm dois ou três
+elementos.
+
+Vale notar o que isso **não** custou: as ~15 linhas de biblioteca
+reimplementada são menos que a diferença entre SML (497) e OCaml (468), então a
+biblioteca menor não é o que explica a diferença. O que explica é a sintaxe:
+`let ... in ... end` contra `let ... in`, e a ausência de açúcar para
+`fun f (a, b) =` com casamento aninhado.
 
 ## O porte em Common Lisp, e a armadilha de `assoc`
 

@@ -21,7 +21,7 @@ jobs:
   # de arquivos muda o numero por um fator de 5,5x.
   portes:
     runs-on: ubuntu-latest
-    name: portes do verificador (OCaml, F#, Prolog, Racket, Lisp)
+    name: portes do verificador (OCaml, F#, SML, Prolog, Racket, Lisp)
     steps:
       - uses: actions/checkout@v5
 
@@ -37,11 +37,16 @@ jobs:
           sudo apt-get install -y -qq ghc ocaml swi-prolog-nox
           sudo apt-get install -y -qq --no-install-recommends racket
           sudo apt-get install -y -qq sbcl
+          # MLton compila programa inteiro e produz binario nativo. O
+          # `ports/sml/roda.sh` o invoca sozinho se o fonte for mais novo que
+          # o binario -- entao nao ha passo de build separado aqui.
+          sudo apt-get install -y -qq mlton
           ghc --version
           ocamlopt -version
           swipl --version
           racket --version
           sbcl --version
+          mlton 2>&1 | head -1 || true
 
       - uses: actions/setup-dotnet@v4
         with:

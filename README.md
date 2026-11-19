@@ -271,7 +271,7 @@ Quatro decisões estruturais:
 Referência da linguagem: [docs/LANGUAGE.md](docs/LANGUAGE.md).
 Desenho das closures: [docs/PHASE2.md](docs/PHASE2.md).
 
-## Cinco portes do verificador: OCaml, F#, Prolog, Racket e Common Lisp
+## Seis portes do verificador: OCaml, F#, Standard ML, Prolog, Racket e Common Lisp
 
 O mesmo Algoritmo W em **três linguagens da mesma família**, com saída **byte a
 byte idêntica** nos 23 casos de `tests/`.
